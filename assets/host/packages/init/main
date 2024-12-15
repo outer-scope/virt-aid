@@ -1,0 +1,27 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Installing base apps..."
+log "======================="
+
+printf "\n"
+echo "Installing lshw, ddcutil, qemu-system, libvirt-clients, libvirt-daemon-system, bridge-utils, virt-manager, ovmf. Press enter to continue..."
+read
+
+unpack_package "lshw ddcutil qemu-system libvirt-clients libvirt-daemon-system bridge-utils virt-manager ovmf" || unpack_package "lshw ddcutil qemu libvirt bridge-utils virt-manager edk2-ovmf"
+
+printf "\n"
+log "Assign user to libvirt group..."
+log "==============================="
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+# We assign the logged in user libvirt and kvm group.
+# Should we add these groups to root as well? Security risk?
+username=$(who am i | awk '{print $1}')
+
+sudo usermod -aG libvirt,kvm "$username"

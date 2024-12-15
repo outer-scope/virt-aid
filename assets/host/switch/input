@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+# Attr:
+# $devices: This is a collection of usb devices (like mouse and keyboard) to be kvm-switched.
+# 	        Queryable through lsusb.
+
+target_name=$1
+host="host"
+
+switch_input_action() {
+  vmname=$1
+  action=$2
+  device=(${3//:/ }) # Uncomment this if the id is using hexa format
+  dev_xml=/tmp/device-${device[0]}:${device[1]}.xml
+
+  . $VA_HELPERS
+
+  sudo echo "<hostdev mode='subsystem' type='usb'>"      > $dev_xml
+  sudo echo "  <source>"                                >> $dev_xml
+  sudo echo "    <vendor id='0x${device[0]}'/>"         >> $dev_xml
+  sudo echo "    <product id='0x${device[1]}'/>"        >> $dev_xml
+  sudo echo "  </source>"                               >> $dev_xml
+  sudo echo "</hostdev>"                                >> $dev_xml
+
+  log "$action-ing $device from/to $vmname"
+
+  virsh $action-device $vmname $dev_xml
+}
+
+. $VA_QUERY guest-devices $target_name
+
+# Exit if guest has no GPU device.
+[[ -z "$guest_gpu_device" ]] && [[ "$target_name" != "$host" ]] && exit
+
+for dev in $input_devices
+do
+  # Detach peripherals from current
+  if [[ "$current" != "$host" ]] || [[ "$target_name" == "$host" ]];
+  then
+    switch_input_action $current detach $dev
+  fi
+
+  # If target is host, detaching is enough.
+  if [[ "$target_name" != "$host" ]];
+  then
+    switch_input_action $target_name attach $dev
+  fi
+done
+
+# We register current on input switch since it is the last operation on switching.
+echo $target_name > $VA_PATH/utils/switch/current

@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+
+# After 7 years of trial-and-error, 
+# we conclude that:
+# 1. assuming we always have multiple shared monitors setup, switching monitor with ddcutil will have to be done by specifying the i2c bus
+#     ddcutil setvcp 60 0x99 --bus x
+#    so that ddcutil knows which monitor to switch.
+# 2. passing  GPU to the guest will remove the entry from ddcutil detect. so, performing the above command will result in error.
+# 3. When re-attaching a GPU to the host, the host may assign different I2C bus to that GPU!!!.
+# 4. Either the host or the guest with having the GPU will do the switch.
+#
+# From the above, our simplified workflow would be:
+# 1. given a target GPU id, we understand which monitors we have to perform switch to (switch/mon-*.conf)
+# 2. for each shared monitor definition, we try to switch using the actual target i2c bus in host.
+# 3. if the above fails, indicating that the GPU is no longer held by the host, we try to switch using other i2c bus from other GPU that is still connected to the monitor.
+#     (Remember that a shared monitor is shared by multiple GPUs.)
+# 4. if that also fails, indicating that all GPUs connected to that shared monitor are gone from host and that there are active guests acquiring these GPUs, 
+#     we try to switch fro those guests.
+#     - the guests can be acquired by combining queries from devices & switch modules.
+#     - since the GPUs in the guests will ALWAYS be primary GPUs, we can only pass the port codes.
+#     - the guest will try to acquire the i2c bus number from the given port codes and perform the switch.
+#     - successful switch will flag host switch to proceed with the input switch.
+
+. $VA_HELPERS
+
+[[ -f $VA_PATH/utils/switch/disable-monitor-switch ]] && ( exit )
+
+target=$1
+
+get_is_primary_gpu_available
+
+host="host"
+
+if [ "$target" == "$host" ];
+then
+# If device driver is vfio-pci, this device is passed through (acquired by a guest.)
+  if [ -z "$is_primary_gpu_available" ];
+  then
+    log "Switching to host..."
+
+    # If primary GPU is available, do the switch.
+    # A GPU may be connected to 2 monitors.
+    while IFS= read -r host_port; do
+      switch_monitor $host_port
+    done <<< "$host_ports"
+  else
+    # If primary GPU is not available, exit with error so input peripherals will not get switched.
+    log "Host primary GPU unavailable. Exiting..."
+    exit 1
+  fi
+else
+  . $VA_QUERY guest-devices $target
+  guest_device=$(get_pci_id_with_virsh_format $guest_gpu_device)
+  guest_port_configs=$(cat $VA_PATH/utils/switch/$guest_gpu_device.conf)
+  # shared_monitor_configs=$(grep -Rnw $VA_PATH/utils/switch/mon-*.conf -e "$guest_device" | awk -F  ':' '{print $1}' | awk -F  '/' '{print $NF}')
+
+  ddcutil_detect=$(sudo ddcutil detect)
+
+  # For every guest port config, we get the monitor config to get all the connected i2c buses.
+  while IFS= read -r guest_port_config; do
+    guest_port_config=( $guest_port_config )
+    guest_monitor=${guest_port_config[0]}
+    guest_port=${guest_port_config[1]}
+    guest_bus=${guest_port_config[2]}
+
+    # Get the line numbers where the bus number is diplayed for the given monitor in ddcutil detect:
+    line_numbers=$(echo "$ddcutil_detect" | grep -n $guest_monitor | cut -f1 -d: | awk '{ printf($1-4 "p; ") }')
+    bus_numbers=$(echo "$ddcutil_detect" | sed -n "$line_numbers" | awk '{print $NF}' | sed -n -e 's/^.*-//p')
+
+    # Considering that a GPU can connect to more that two monitors, and that if that GPU is passed through,
+    # we try performing ddcutil from the same monitor, using other GPU that connects with that same monitor.
+    if [[ ! -z "$bus_numbers" ]]
+    then
+      # If bus_numbers is empty, we are sure that all GPUs are taken.
+      while IFS= read -r bus_number; do
+        log "Switching output monitor $guest_monitor port $guest_port bus $guest_bus using i2c bus $bus_number from other GPU by host..."
+        
+        switch_monitor $guest_monitor $guest_port $bus_number
+
+        # If successful, break.
+        if [[ $? == 0 ]]
+        then
+          break
+        fi
+      done <<< "$bus_numbers"
+    else
+      # If all GPUs are taken from host, we rely on guests to perform the switch.
+      while IFS= read -r line;
+      do
+        params=( $line )
+        gpu_id=${params[0]}
+        other_bus=${params[2]}
+
+        # If still failed, we switch using available guest acquiring that GPU.
+        guest_name=$(get_guest_name_by_pci_id $gpu_id)
+
+        . $VA_QUERY flag $guest_name-fresh-install
+
+        # An issue arose when switching to a guest while performing a fresh install, where the host cannot perform the switch
+        # due to primary gpu loss. The switch will try to invoke the guest ddcutil by messaging that guest through the console device (see stream,)
+        # but the message will break the install process due to the console device receiving inputs it cannot understand whilst
+        # trying to interact with appropriate user input. E.g. when starting a fedora installation, the console device will
+        # print something like "The highlighted option will be automatically...".
+        #
+        # To avoid this, we skip invoking the ddcutil from the guest target itself. The switch should be done by either the host or other helping guests.
+        [[ ! -z "$is_flagged" ]] && continue
+
+        log "Next try... Switching output monitor $guest_monitor port $guest_port bus $guest_bus by $guest_name..."
+        switch_monitor_by_guest $guest_name $guest_monitor $guest_port
+
+        # Pause to take effect.
+        sleep 3
+
+        # Inspect switching output by the guest.
+        . $VA_QUERY flag switch-output-by-guest-success
+
+        # If switching using guest help succeeds, continue switching other monitor.
+        if [[ ! -z $is_flagged ]]
+        then
+          $VA_DISPATCH flag switch-output-by-guest-success
+          break
+        fi
+      done < <(cat $VA_PATH/utils/switch/mon-$guest_monitor.conf)    
+    fi
+
+
+    # If all options are already exhausted, there's basically nothing we can do.
+    # virt-aid will continue with input switch. If anything goes wrong, user can still connect/disconnect all input
+    # peripherals, so that it will land again on host space, and user can still manually change monitor input source.
+  done <<< "$guest_port_configs"
+fi

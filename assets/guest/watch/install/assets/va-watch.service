@@ -1,0 +1,10 @@
+[Unit]
+Description=Watches incoming commands from host.
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/environment
+ExecStart=/usr/local/bin/virt-aid/va-dispatch watch
+
+[Install]
+WantedBy=multi-user.target

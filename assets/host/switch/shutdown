@@ -1,0 +1,32 @@
+#!/bin/bash
+
+current=$(cat $VA_PATH/utils/switch/current)
+
+. $VA_HELPERS
+
+get_active_guests
+get_is_primary_gpu_available
+
+switch_output_to_host() {
+  # A race condition occured when shutting down the host while multiple guests are up.
+  # The race condition is due to each guest trying to give back io to host. This results in host shut down not in a clean state.
+  # Furthermore, in case of host loosing the primary GPU, we cannot switch to host.
+  # To mitigate this, we "manually" switch to host port, regardless of whether or not what that port is showing.
+  # To avoid the guests to switch to the next guest, we lock the switch.
+  # We only switch monitor, since the shutdown automatically sends keyboard & mouse to host.
+
+  # TODO: Refine!
+
+  # Lock switch! 
+  $VA_DISPATCH flag switch
+
+  log "Switching monitor to host during shutdown..."
+  log "============================================"
+
+  # If host has the primary GPU, switch output directly. Otherwise switch output to guest having it.
+  [[ -z "$is_primary_gpu_available" ]] && $VA_DISPATCH switch/output host || $VA_DISPATCH switch/output $active_guest_with_host_gpu
+
+  echo host > $VA_PATH/utils/switch/current
+}
+
+switch_output_to_host

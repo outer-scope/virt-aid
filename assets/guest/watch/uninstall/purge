@@ -1,0 +1,12 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Uninstalling Watch Services"
+log "========================"
+
+systemctl stop va-watch.service
+systemctl disable va-watch.service
+
+rm /etc/systemd/system/va-watch.service

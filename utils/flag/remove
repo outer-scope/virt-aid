@@ -1,0 +1,9 @@
+#!/bin/bash
+
+flag_name=$1
+
+. $VA_HELPERS
+
+log "Unflagging $flag_name..."
+
+[[ -f "/tmp/va-flag-$flag_name" ]] && rm /tmp/va-flag-$flag_name

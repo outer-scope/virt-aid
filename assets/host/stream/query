@@ -1,0 +1,8 @@
+#!/bin/bash
+
+guest=$1
+
+log=$(sudo cat /var/log/libvirt/qemu/$guest.log)
+# We extract the latest occurence of the string "char device redirected to".
+log=$(echo "$log" | sed -e '/char device redirected to/h;//!H;$!d;x;//p')
+chardev=$(echo "$log" | grep -m 1 "char device redirected to /dev/" | sed -E 's/^[^\/]*(\/dev\/[a-z][a-z][a-z]\/[0-9]*).*/\1/')

@@ -1,0 +1,63 @@
+#!/bin/bash
+
+guest=$1
+
+# If guest is empty, assuming that this module is called as a hook callee, try to get the guest from SHARED_VAR
+[[ -z $guest ]] && guest=$SHARED_VAR
+
+# In case called individually, re-prompt guest name.
+if [[ -z $guest ]]
+then
+  echo "Type the vm name, followed by [ENTER] (Entering empty string to exit):"
+  read guest
+  [[ -z "$guest" ]] && exit
+fi
+
+echo "Setup devices to passthrough (y/n)?"
+read setup
+
+[[ $setup = "n" ]] && exit
+
+# In case of re-setup, remove existing config.
+[[ -f $VA_PATH/utils/guest-devices/$guest.conf ]] && rm $VA_PATH/utils/guest-devices/$guest.conf
+
+# Remove guest from gpu passthrough config file if registered, to avoid double entry or other inconsistencies.
+[[ -f $VA_PATH/utils/guest-devices/single-gpu-passthrough-guests.conf ]] && sed -i -e "s/$guest//g" $VA_PATH/utils/guest-devices/single-gpu-passthrough-guests.conf
+[[ -f $VA_PATH/utils/guest-devices/gpu-passthrough-guests.conf ]] && sed -i -e "s/$guest//g" $VA_PATH/utils/guest-devices/gpu-passthrough-guests.conf
+
+. $VA_QUERY switch
+
+# iterate all pci devices. enter empty to continue.
+while :
+do
+  lspci | nl -s ") "
+  echo "Enter the number of the pci device to be passed through (Enter blank to continue to the next step.):"
+  read pci_number
+
+  [[ $pci_number = "" ]] && break
+
+  pci=$(lspci | sed -n "$pci_number"p)
+  pci_key=${pci:0:7}
+  echo 0000:$pci_key >> $VA_PATH/utils/guest-devices/$guest.conf
+
+  # Check single gpu pass here. Register in config file if guest passes host gpu through.
+  if [ "0000:$pci_key" == "$primary_gpu" ];
+  then
+    echo "$guest" >> $VA_PATH/utils/guest-devices/single-gpu-passthrough-guests.conf
+
+    is_x11=$(pgrep startx)
+    if [[ ! -z "$is_x11" ]]
+    then
+      echo "startx detected! Unfortunately, passing primary GPU onto $guest will require virt-aid to kill active X11 session."
+      echo "This will result in instability, e.g. $guest restart will end up shutting down $guest, among other unexpected results."
+      echo "If possible, run $guest from a headless environment. If not, proceed with cautious."
+    fi
+  else
+    target_has_gpu=$(lspci -D | grep "0000:$pci_key" | grep -iE "vga|graphic|display")
+
+    if [ ! -z "$target_has_gpu" ];
+    then
+      echo "$guest" >> $VA_PATH/utils/guest-devices/gpu-passthrough-guests.conf
+    fi
+  fi
+done

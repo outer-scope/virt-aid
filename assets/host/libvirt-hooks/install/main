@@ -1,0 +1,56 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Installing Libvirt-hooks"
+log "========================"
+
+printf "\n"
+echo "This module registers libvirt hooks for automating resources assignment when starting guests."
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+# Hooks will be used to govern devices to be used by vms as well as releasing
+# resources back to host.
+sudo cp $VA_PATH/utils/libvirt-hooks/install/assets/qemu /etc/libvirt/hooks/qemu
+sudo chmod +x /etc/libvirt/hooks/qemu
+
+# Add user and group into qemu.conf to be able to access local folder.
+# This was intended to allow libvirt to access /home
+# Security risk?
+#echo "user = \"$(whoami)\"" | sudo tee -a /etc/libvirt/qemu.conf
+#echo "group = \"libvirt\"" | sudo tee -a /etc/libvirt/qemu.conf
+
+sudo service libvirtd restart
+
+printf "\n"
+echo "Setting up vfio startup and teardown scripts that attach/detach primary GPU from desktop environment."
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+log "Downloading file from https://gitlab.com/risingprismtv/single-gpu-passthrough/-/archive/master/single-gpu-passthrough-master.zip and setting up. Please wait..."
+
+# The following script will be used in case the primary GPU is being passed through.
+sudo wget https://gitlab.com/risingprismtv/single-gpu-passthrough/-/archive/master/single-gpu-passthrough-master.zip -P $VA_PATH/utils/libvirt-hooks/
+
+sudo unzip -d $VA_PATH/utils/libvirt-hooks/ $VA_PATH/utils/libvirt-hooks/single-gpu-passthrough-master.zip
+
+sudo mv $VA_PATH/utils/libvirt-hooks/single-gpu-passthrough-master/hooks/vfio-startup $VA_PATH/utils/libvirt-hooks/vfio-startup
+sudo chmod +x $VA_PATH/utils/libvirt-hooks/vfio-startup
+sudo chown "${USER:=$(/usr/bin/id -run)}:$USER" $VA_PATH/utils/libvirt-hooks/vfio-startup
+
+sudo mv $VA_PATH/utils/libvirt-hooks/single-gpu-passthrough-master/hooks/vfio-teardown $VA_PATH/utils/libvirt-hooks/vfio-teardown
+sudo chmod +x $VA_PATH/utils/libvirt-hooks/vfio-teardown
+sudo chown "${USER:=$(/usr/bin/id -run)}:$USER" $VA_PATH/utils/libvirt-hooks/vfio-teardown
+
+sudo rm -rf $VA_PATH/utils/libvirt-hooks/single-gpu-passthrough-master
+sudo rm $VA_PATH/utils/libvirt-hooks/single-gpu-passthrough-master.zip
+
+# We comment out all occurences of modprobe -r vfio* to avoid unloading vfio drivers
+# in case vfio drivers still needed by running VMs.
+sed -i '/modprobe -r vfio/s/^/#/' $VA_PATH/utils/libvirt-hooks/vfio-teardown

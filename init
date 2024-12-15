@@ -1,0 +1,157 @@
+#!/bin/bash
+
+amisudo=$(sudo -l)
+
+if [ $? -eq 1 ];
+then
+  echo "You do not have sudo privilege. Aborting..."
+  exit
+fi
+
+if [ `id -u` -ne 0 ];
+  then echo Please run this script as root or using sudo!
+  exit
+fi
+
+if [ ! -z "$VA_PATH" ];
+  then echo virt-aid is already installed!
+  exit
+fi
+
+curr_path=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+va_path=/usr/local/bin/virt-aid
+
+if [[ ! -f $va_path/init-2 ]]; then
+  # Detach from git.
+  rm -rf $curr_path/.git
+
+  echo Downloading and extracting angl...
+  sudo wget https://github.com/outer-scope/angl/archive/refs/heads/main.zip -O $curr_path/utils/angl.zip
+  [[ "$?" != "0" ]] && echo Cannot proceed due to not being able to download necessary files. Please retry later. && exit 1
+  unzip -d $curr_path/utils/angl $curr_path/utils/angl.zip && rm $curr_path/utils/angl.zip
+
+  # Move contents of angl-main onto angl
+  mv $curr_path/utils/angl/angl-main/* $curr_path/utils/angl
+
+  echo Removing unnecessary files...
+  # Remove exmples and LICENSE
+  rm -rf $curr_path/utils/angl/examples
+  rm $curr_path/utils/angl/LICENSE
+
+  # Move dispatchers to utils folder.
+  find $curr_path/utils/angl -type f ! -name "*.*" -exec mv {} $curr_path/utils \;
+
+  # Make sure the exe files are indeed executable.
+  find $curr_path -type f ! -name "*.*" -exec chmod +x {} \;
+
+  echo "Press enter to continue..."
+  read
+
+  echo "Moving installation files into /usr/local/bin"
+  echo "============================================="
+
+  # Move virt-aid to /usr/local/bin.
+  sudo cp -R $curr_path /usr/local/bin
+
+  rm -rf $curr_path
+
+  # Prepare for phase 2.
+  echo "" > $va_path/init-2
+
+  # Resume phase 2.
+  $va_path/init
+
+  echo "Press enter to continue..."
+  read
+else
+  clear
+
+  . $va_path/utils/helpers
+
+  read -n 1 -s -r -p "Register global environment var. Press enter to continue..."$'\n'
+  echo VA_PATH="$va_path" | sudo tee -a /etc/environment
+  echo VA_DISPATCH="$va_path/va-dispatch" | sudo tee -a /etc/environment
+  echo VA_QUERY="$va_path/utils/query" | sudo tee -a /etc/environment
+  echo VA_HELP="$va_path/utils/help" | sudo tee -a /etc/environment
+  echo VA_HELPERS="$va_path/utils/helpers" | sudo tee -a /etc/environment
+
+  export $(cat /etc/environment | xargs)
+
+  # =====
+
+  # Depending on the mode, the content of guest/host folder will be moved into install/assets folder
+  # to be gathered together with other assets files in order to be copied to the module's root folder
+  # and the unused installation files will be deleted for security reasons.
+  # If a module doesn't have the structure that the installer recognizes, one might need to organize assets manually.
+  if [[ $is_virtual == FALSE ]]
+  then
+    printf "\n"
+    log "Setting up installation assets for Host..."
+    log "=========================================="
+
+    cp -R $VA_PATH/assets/host/. $VA_PATH/utils
+    rm -rf $VA_PATH/assets/host
+    rm -rf $VA_PATH/assets/guest
+  else
+    printf "\n"
+    log "Setting up installation assets for Guest..."
+    log "==========================================="
+
+    cp -R $VA_PATH/assets/guest/. $VA_PATH/utils
+    rm -rf $VA_PATH/assets/host
+    rm -rf $VA_PATH/assets/guest
+  fi
+
+  # =====
+
+  printf "\n"
+  log "Initializing..."
+  log "==============="
+
+  printf "\n"
+  echo "Press enter to continue..."
+  read
+
+  . $VA_DISPATCH init
+
+  # =====
+
+  printf "\n"
+  log "Remove all init scripts..."
+  log "=========================="
+
+  printf "\n"
+  echo "Removing init scripts. Press enter to continue..."
+  read
+
+  for module in $VA_PATH/utils/*/init ; do
+    rm -rf $module
+  done
+
+  printf "\n"
+  log "Setting up..."
+  log "============="
+
+  printf "\n"
+  echo "Press enter to continue..."
+  read
+
+  . $VA_DISPATCH install
+
+  # =====
+
+  # Remove self.
+  rm $0
+  rm $va_path/init-2
+
+  # =====
+
+  printf "\n"
+  log "Restarting..."
+
+  printf "\n"
+  echo "Press enter to continue..."
+  read
+
+  sudo shutdown -r now
+fi

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+echo "Setting up USB devices. Press enter to continue..."
+read
+
+# Remove existing input config.
+rm -r $VA_PATH/utils/switch/input.conf
+
+# We acquire keyboard and mouse.
+while read -r usb || [ -n "$usb" ];
+do
+  printf "\n"
+  log "Setting up USB device:"
+  log "$usb"
+
+  usb_key=${usb:23:9}
+
+  echo $usb_key >> $VA_PATH/utils/switch/input.conf
+done < <(lsusb | tr '[:upper:]' '[:lower:]' | grep 'keyboard\|mouse')

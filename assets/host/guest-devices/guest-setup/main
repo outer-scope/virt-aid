@@ -1,0 +1,8 @@
+#!/bin/bash
+
+guest=$1
+
+# If guest is empty, assuming that this module is called as a hook callee, try to get the guest from SHARED_VAR
+[[ -z $guest ]] && guest=$SHARED_VAR
+
+$VA_PATH/utils/guest-devices/setup-devices $guest

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+flag_name=$1
+
+. $VA_HELPERS
+
+# We put flags on /tmp so that on shutdown, all flags will be flushed.
+[[ -f "/tmp/va-flag-$flag_name" ]] && $VA_PATH/utils/flag/remove $flag_name || log "Flagging $flag_name..." & ( echo "" > /tmp/va-flag-$flag_name )

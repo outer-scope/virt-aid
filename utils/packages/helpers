@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# The following functions are to be used to abstract package installation from distro specific commands.
+# TODO: Refine! Add missing distro specific install command.
+remove_package() {
+  packages=$1
+
+  # Try installing using different package managers to support different distros.
+  sudo apt purge $packages || sudo dnf remove $packages || sudo yum remove $packages || sudo pacman -R $packages
+}
+
+unpack_package() {
+  packages=$1
+
+  # Try installing using different package managers to support different distros.
+  # TODO: generalize package names by using config?
+  sudo apt install $packages || sudo dnf install $packages || sudo yum install $packages || sudo pacman -S $packages
+}

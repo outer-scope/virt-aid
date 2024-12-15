@@ -1,0 +1,11 @@
+#!/bin/bash
+
+guest=$1
+
+. $VA_QUERY flag $guest-fresh-install
+
+# If the fresh install flag exist, unflag.
+[[ ! -z "$is_flagged" ]] && $VA_DISPATCH flag $guest-fresh-install
+
+# Switch module handles the handing over of I/O to the next guest/host (if no other guests are active.)
+$VA_DISPATCH switch/next

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+log() {
+  text=$@
+  date=$(date '+%Y-%m-%d_%H:%M:%S')
+
+  echo "virt-aid $date: $text" | tee -a $VA_PATH/utils/log/logs
+}

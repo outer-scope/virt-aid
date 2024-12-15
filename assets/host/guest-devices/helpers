@@ -1,0 +1,15 @@
+#!/bin/bash
+
+get_guest_name_by_pci_id () {
+  pci_id=$1
+
+  guest_config=$(grep -Elir --include=*.conf "$pci_id" $VA_PATH/utils/guest-devices | xargs basename)
+
+  echo "${guest_config%.*}" 
+}
+
+get_pci_id_with_virsh_format () {
+  pci_id=$1
+
+  echo "$pci_id" | tr : _ | tr . _ | sed -e 's/^/pci_/'
+}

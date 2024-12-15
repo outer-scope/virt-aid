@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# This script is inspired from the following sources:
+
+GUEST_NAME="$1"
+HOOK_NAME="$2"
+STATE_NAME="$3"
+MISC="${@:4}"
+
+set -x
+
+export $(cat /etc/environment | xargs)
+
+. $VA_QUERY guest-devices $GUEST_NAME
+. $VA_HELPERS
+
+# Only execute hooks scripts if guest has PCI devices.
+[[ -z "$devices" ]] && exit 0
+
+############
+
+prepare-begin() {
+  log "prepare-begin hook for $GUEST_NAME"
+  log "============="
+
+  # Check device integrity. If fails, fail guest run to avoid partially connected devices.
+  #. $VA_QUERY switch/check-devices $GUEST_NAME
+  if [ ! -z "$is_primary_gpu_passthrough_guest" ]; then
+    # If primary GPU guest and the host has startx, logout all X sessions. Otherwise system crash (segmentation fault).
+    # This is also mentioned in https://gitlab.com/risingprismtv/single-gpu-passthrough
+    # We no longer need to manually save guest XML due to the new way we setup guests.
+    is_startx=$(pgrep startx)
+    
+    if [[ ! -z "$is_startx" ]]
+    then
+      log "startx detected while passing through primary GPU. Logging out..." 
+
+      # Logout all users to avoid system crashes.
+      who | grep -v root | awk '$1 !~ /root/{ cmd="pkill -u " $1; system(cmd)}'
+
+      sleep 2
+    fi
+
+    # If guest is acquiring host gpu, execute vfio-startup.
+    log "Executing vfio-startup..."
+    su -c "$VA_DISPATCH spawn libvirt-hooks/vfio-startup"
+  else
+    # Otherwise, load vfio related modules, if not already loaded.
+    sudo modprobe vfio
+    sudo modprobe vfio-pci
+  fi
+
+  sleep 1
+
+  readarray -t pcis < <(echo "$devices_with_virsh_format")
+  for pci in "${pcis[@]}"
+  do
+    log "Detaching $pci"
+    virsh nodedev-detach $pci
+  done
+
+  sleep 1
+}
+
+############
+
+release-end() {
+  log "release-end hook for $GUEST_NAME"
+  log "============="
+
+  . $VA_HELPERS
+
+  readarray -t virsh_pcis < <(echo "$devices_with_virsh_format")
+  for virsh_pci in "${virsh_pcis[@]}"
+  do
+  log "Reattaching $virsh_pci"
+  virsh nodedev-reattach $virsh_pci
+  done
+
+  # If guest is acquiring host gpu, resume display to host by re-binding vtconsoles.
+  if [ ! -z "$is_primary_gpu_passthrough_guest" ]; then
+  log "Executing vfio-teardown..."
+  su -c "$VA_DISPATCH spawn libvirt-hooks/vfio-teardown"
+  fi
+
+  sleep 1
+}
+
+############
+
+func="$HOOK_NAME-$STATE_NAME"
+
+if [[ "$(type -t $func)" == "function" ]] 
+then
+  # The prepare-begin and release-end events will call the appropriate functions defined above
+  # that will deal with attach/release PCI devices from host, loading/unloading kernel modules
+  # needed for passing-through, as well as executing vfio-startup/teardown scripts that (de/at)taches
+  # primary GPU from active desktop sessions. 
+  #
+  # On previous versions, these functions were extracted to separate files, but then permission/async issues arose.
+  # Async issues occur where there were race conditions on freeing PCi devices from host, and switching process
+  # that ended up in system crash.
+  #
+  # virt-aid cannot be dealing with more complexity, so that is why it is decided to perform these tasks here.
+  $func
+fi
+
+# In order for modules to be able to "listen" to libvirt hooks, we dispatch them additionally.
+# We spawn because the hook scripts will modify current guest's state.
+# E.g. attaching/detaching I/O peripherals, etc.
+# Since libvirt-hooks doesn't have prepare-begin & release-end scripts, but other modules
+# hook these events, we pass arguments using angl's SHARED_VAR.
+su -c "$VA_DISPATCH spawn libvirt-hooks/$HOOK_NAME-$STATE_NAME $GUEST_NAME"
+
+# Somehow, without the sleep, the release-end hook will directly be called. Investigate!
+sleep 1

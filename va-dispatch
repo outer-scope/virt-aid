@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Pass along SHARED_VAR
+export SHARED_VAR=$SHARED_VAR
+export $(cat /etc/environment | xargs)
+
+# Dispatch strict mode. TODO: log errors. 
+$VA_PATH/utils/dispatch --strict $@

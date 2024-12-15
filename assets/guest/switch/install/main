@@ -1,0 +1,3 @@
+#!/bin/bash
+
+$VA_PATH/utils/switch/setup-switch

@@ -1,0 +1,64 @@
+#!/bin/bash
+
+extract_pci_id () {
+  string=$1
+
+  echo "$string" | grep -Po '[a-fA-F0-9]{4}:[a-fA-F0-9]{2}:[a-fA-F0-9]{2}\.[a-fA-F0-9]{1,2}'
+}
+
+get_is_primary_gpu_available () {
+  host_device=$(cat $VA_PATH/utils/switch/primary-gpu.conf)
+  host_ports=$(cat $VA_PATH/utils/switch/$host_device.conf)
+  host_device=$(get_pci_id_with_virsh_format $host_device)
+
+  is_primary_gpu_available=$(virsh nodedev-dumpxml "$host_device" | grep vfio-pci)
+}
+
+get_active_guests () {
+  . $VA_QUERY guest-devices
+  . $VA_HELPERS
+
+  log "Calling get_active_guests()"
+ 
+  # Active guests
+  guests=$(sudo virsh list | grep running | awk '{print $2}')
+
+  log "get_active_guests() - Inspecting running guests: $guests"
+
+  # Active guest acquiring host GPU
+  active_guest_with_host_gpu=$(intersect "$guests" "$primary_gpu_passthrough_guests")
+
+  log "get_active_guests() - Inspecting active_guest_with_host_gpu: $active_guest_with_host_gpu"
+
+  # Active guests acquiring GPUs
+  active_guests_with_gpu=$(intersect "$guests" "$gpu_passthrough_guests")
+
+  log "get_active_guests() - Inspecting active_guests_with_gpu: $active_guests_with_gpu"
+
+  # Please remember that if the first array is empty, the first item in the new array is also empty.
+  active_guests_with_passthrough=( "${active_guest_with_host_gpu[@]}" "${active_guests_with_gpu[@]}" )
+
+  log "get_active_guests() - Inspecting active_guests_with_passthrough: $active_guests_with_passthrough"
+
+  active_guests_no_passthrough=( "${guests[@]}" "${active_guests_with_passthrough[@]}" )
+  active_guests_no_passthrough=$(printf "$active_guests_no_passthrough" | sort | uniq -u)
+
+  log "get_active_guests() - Inspecting active_guests_no_passthrough: $active_guests_no_passthrough"
+}
+
+switch_monitor() {
+  monitor=$1
+  port=$2
+  bus=$3
+
+  # Code 60 expose functions on monitor ports.
+  sudo ddcutil setvcp 60 $port --bus $bus
+}
+
+switch_monitor_by_guest() {
+  guest_name=$1
+  monitor_name=$2
+  port=$3
+
+  $VA_DISPATCH stream $guest_name switch/output $monitor_name $port
+}

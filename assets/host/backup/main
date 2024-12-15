@@ -1,0 +1,22 @@
+#!/bin/bash
+
+[[ ! -d $VA_PATH/boxes ]] && mkdir $VA_PATH/boxes
+
+guest=$1
+
+if [[ -z "$guest" ]]
+then 
+  # If no guest is supplied, backup all xml.
+  find /etc/libvirt/qemu -type f -name "*.xml" -exec cp {} $VA_PATH/boxes \;
+else
+  . $VA_HELPERS
+
+  log "Backing up $guest..."
+
+  if [[ ! -f /etc/libvirt/qemu/$guest.xml ]]
+  then
+    sudo virsh dumpxml $guest | sudo tee $VA_PATH/boxes/$guest.xml
+  else
+    cp /etc/libvirt/qemu/$guest.xml $VA_PATH/boxes
+  fi
+fi

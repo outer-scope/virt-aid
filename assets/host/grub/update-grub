@@ -1,0 +1,61 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+# grub will be used to replace current grub by update-grub
+cp /etc/default/grub $VA_PATH/utils/grub/grub
+
+printf "\n"
+log "Setting the GRUB file..."
+
+# Remove existing virt-aid grub configuration in case of re-install to avoid double registry.
+sed -i -e "s/ intel_iommu=on//g" $VA_PATH/utils/grub/grub
+sed -i -e "s/ amd_iommu=on//g" $VA_PATH/utils/grub/grub
+sed -i -e "s/ video=efifb:off//g" $VA_PATH/utils/grub/grub
+
+# Check if GRUB_CMDLINE_LINUX_DEFAULT exists, if not, check if GRUB_CMDLINE_LINUX exists.
+grub_config=$(sudo cat $VA_PATH/utils/grub/grub | grep GRUB_CMDLINE_LINUX_DEFAULT)
+config_key="GRUB_CMDLINE_LINUX_DEFAULT"
+if [ -z "$grub_config" ]; then
+  grub_config=$(sudo cat $VA_PATH/utils/grub/grub | grep GRUB_CMDLINE_LINUX)
+  config_key="GRUB_CMDLINE_LINUX"
+fi
+
+# We extract the original configs between the "" to be appended later again.
+custom_grub_config=$(echo "$grub_config" | awk -F'"' '{print $2}')
+
+# We add our config.
+custom_grub_config="$config_key=\"$custom_grub_config IOMMU_TYPE=on video=efifb:off\""
+
+# We replace the original line found in the grub config.
+sed -i -e "s/$grub_config/$custom_grub_config/g" $VA_PATH/utils/grub/grub
+
+is_intel=$(lscpu | tr '[:upper:]' '[:lower:]' | grep "model name" | grep "intel")
+
+# Enable the correct iommu based on cpu type. Currently only supporting AMD and Intel.
+[[ ! -z $is_intel ]] && sed -i "s@IOMMU_TYPE@intel_iommu@g" $VA_PATH/utils/grub/grub
+[[ -z $is_intel ]] && sed -i "s@IOMMU_TYPE@amd_iommu@g" $VA_PATH/utils/grub/grub
+
+new_grub_config=$(sudo cat $VA_PATH/utils/grub/grub | grep "$config_key")
+
+printf "\n"
+echo "The following config:"
+echo "$new_grub_config"
+echo "will replace the old config:"
+echo "$grub_config"
+
+printf "\n"
+echo "The original grub is backed up on $VA_PATH/utils/grub/grub-ori."
+echo "If you are not sure about this, you may skip this step and re-run $VA_DISPATCH grub/update-grub later."
+
+printf "\n"
+echo "Proceed update grub? (y/n)"
+read proceed
+
+if [ "$proceed" == "y" ]; then
+  # Apply new grub
+  sudo cp $VA_PATH/utils/grub/grub /etc/default/grub
+
+  # Update grub
+  sudo update-grub || sudo grub2-mkconfig -o $(readlink -f /etc/grub2-efi.cfg)
+fi

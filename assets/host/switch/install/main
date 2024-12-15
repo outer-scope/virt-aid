@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Init current, set to host.
+echo "host" > $VA_PATH/utils/switch/current
+
+$VA_PATH/utils/switch/setup-switch

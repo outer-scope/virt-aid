@@ -1,0 +1,68 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Setting up guest monitor switch. The configuration will be used to perform ddcutil input source switch on connected monitor(s)."
+
+printf "\n"
+log "Trying running Ddcutil. If this fails, we will try to inspect ddcutil iteratively. You can exit manually and try on later phases."
+
+while :
+do
+  printf "\n"
+  echo "Inspecting Ddcutil. Please wait..."
+
+  ddcutil_environment=$(sudo ddcutil environment)
+  is_display_detected=$?
+
+  [[ $is_display_detected == 0 ]] && break
+
+  if [ $is_display_detected -ne 0 ];
+  then
+    echo "Max ddcutil retries reached. Try again (y/n)?"
+    read retry
+  fi
+
+  if [[ $retry == "y" ]]
+  then
+    echo "Inspecting Ddcutil fails. You may need to re-install this module manually. Please consult the manual. Exiting..."
+    exit
+  fi
+done
+
+# ddcutil
+log "Inspecting ddcutil to retrieve additional info about displays."
+ddcutil_environment=$(sudo ddcutil environment)
+ddcutil_detect_simple=$(sudo ddcutil detect)
+ddcutil_detect=$(sudo ddcutil detect --verbose)
+ddcutil_display_numbers=$(echo "$ddcutil_detect_simple" | tr [:upper:] [:lower:] | grep display | awk '{print $NF}')
+ddcutil_displays=$(echo "$ddcutil_detect" | grep Model | awk '{print $NF}')
+ddcutil_pci_ids=$(echo "$ddcutil_detect" | grep "PCI device path:" | awk '{print $NF}' | awk -F'/' '{print $(NF-1)}')
+ddcutil_buses=$(echo "$ddcutil_detect" | grep "I2C bus:" | awk '{print $NF}' | awk -F'-' '{print $NF}')
+ddcutil_config=$(paste -d " " <(printf '%s\n' "${ddcutil_displays}") <(printf '%s\n' "${ddcutil_pci_ids}") <(printf '%s\n' "${ddcutil_buses}"))
+
+# Config format: [display_number] [model] [pci_id] [drm] [bus]
+config=$(paste -d " " <(printf '%s\n' "${ddcutil_display_numbers}") <(printf '%s\n' "${ddcutil_displays}") <(printf '%s\n' "${ddcutil_pci_ids}") <(printf '%s\n' "${ddcutil_buses}"))
+
+# Remove existing display configs.
+rm -f $VA_PATH/utils/switch/mon-*.conf
+
+while IFS= read -r -u3 display; do
+  monitor=$(echo "$display" | awk '{print $2}')
+  gpu=$(echo "$display" | awk '{print $3}')
+  gpu_code=${gpu/0000:/}
+  device=$(lspci -s $gpu_code)
+  bus_num=$(echo "$display" | awk '{print $NF}')
+
+  printf "\n"
+  log "Setting up monitor: $monitor on GPU device: $device"
+
+  echo "Press enter to continue..."
+  read
+
+  # The monitor name will resemble that of host.
+  # Since the monitor will have only 1 GPU connection, which is the primary GPU, the config will only have 1 ref.
+  # This is sufficient since the guest ddcutil input switch will be controlled by the host anyway.
+  echo "$gpu $bus_num" >> $VA_PATH/utils/switch/mon-$monitor.conf
+done 3< <(echo "$config") # Redirect ouput to descriptor 3 due to reading user inputs while looping.

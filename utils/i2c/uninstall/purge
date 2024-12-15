@@ -1,0 +1,11 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+log "Uninstalling I2C"
+log "================"
+
+sudo rm /etc/modules-load.d/i2c.conf
+
+log "Updating initramfs. Please wait..."
+sudo update-initramfs -u || dracut --regenerate-all --force || sudo mkinitcpio -P

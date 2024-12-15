@@ -1,0 +1,25 @@
+#!/bin/bash
+
+target_to_check=$1
+
+. $VA_HELPERS
+
+log "Device check for $target_to_check"
+
+# The following checks devices integrity. If the input peripherals are incomplete (unplugged)
+# we cancel io switch/guest run. No GPU check due to guest fails automatically if GPU is not present.
+
+# Check if input peripherals are attached. If not, cancel io switch.
+# Only check if target is not host. If target is host, the input peripherals are already gone to the guest.
+if [[ "$target_to_check" != "host" ]]
+then
+  readarray -t devices < $VA_PATH/utils/switch/input.conf
+  for dev in "${devices[@]}"
+  do
+    if [[ -z $(lsusb | grep "$dev") ]]
+    then
+      log "Input device $dev missing..."
+      exit 1
+    fi
+  done
+fi

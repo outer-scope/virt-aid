@@ -1,0 +1,11 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Remove all install scripts & assets..."
+log "======================================"
+
+for module in $VA_PATH/utils/*/install ; do
+  rm -rf $module
+done

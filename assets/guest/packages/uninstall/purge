@@ -1,0 +1,13 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Uninstall base apps..."
+log "===================="
+
+printf "\n"
+echo "Purging ddcutil & qemu-guest-agent. Press enter to continue..."
+read
+
+remove_package "ddcutil qemu-guest-agent"

@@ -1,0 +1,20 @@
+#!/bin/bash
+
+switch_config=$1
+
+. $VA_HELPERS
+
+declare -a gpu_devices=()
+
+current=$(cat $VA_PATH/utils/switch/current)
+display_ports=""
+[[ -f $VA_PATH/utils/switch/$switch_config.conf ]] && display_ports=$(cat $VA_PATH/utils/switch/$switch_config.conf)
+gpu_device_paths=$(ls $VA_PATH/utils/switch/00*.conf)
+for i in "${#gpu_device_paths[@]}"
+do
+  gpu_devices+=$(extract_pci_id "$gpu_device_paths[i]")
+done
+gpu_fb=$(cat $VA_PATH/utils/switch/gpu-framebuffer.conf)
+input_devices=$(cat $VA_PATH/utils/switch/input.conf)
+primary_gpu=$(cat $VA_PATH/utils/switch/primary-gpu.conf)
+shared_displays=$(cat $VA_PATH/utils/switch/shared-displays.conf)

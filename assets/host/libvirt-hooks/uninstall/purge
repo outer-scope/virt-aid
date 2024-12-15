@@ -1,0 +1,9 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Uninstalling Libvirt-hooks"
+log "=========================="
+
+sudo rm -rf /etc/libvirt/hooks/*

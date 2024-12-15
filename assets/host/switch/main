@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Since this script could be execed using sudo, we need to retain environment vars.
+export $(cat /etc/environment | xargs)
+
+. $VA_HELPERS
+
+switch() {
+  target=$1
+
+  # Flag switch so that concurrent switch can take notice.
+  $VA_DISPATCH flag switch
+
+  $VA_PATH/utils/switch/output $target
+  # We assume that output switch always succeeds. If not, manualy output switch is necessary.
+  $VA_PATH/utils/switch/input $target
+
+  # Remove flag after 5 seconds.
+  ( sleep 5 && $VA_DISPATCH flag switch ) &
+}
+
+target=$1
+host="host"
+
+# If switch flag exists (switch is undergoing), exit.
+# This also works on multiple guest autostart. We apply the principle of "early bird gets the worm."
+# meaning that the first guest will "block" the rest from switching.
+. $VA_QUERY flag switch
+[[ ! -z "$is_flagged" ]] && exit
+
+# Check device integrity. If fails, fail guest run to avoid partially connected devices.
+. $VA_QUERY switch/check-devices $target
+[[ $? == 1 ]] && exit 1
+
+log "KVM Switching..."
+log "====="
+
+is_target_running=$(sudo virsh list | grep " $target")
+current=$(cat $VA_PATH/utils/switch/current)
+. $VA_QUERY guest-devices $current
+current_guest_devices="$devices"
+. $VA_QUERY guest-devices $target
+target_devices="$devices"
+next_guest_has_the_same_gpu=$(intersect "$current_guest_devices" "$target_devices")
+
+if [ ! -z "$is_target_running" ] || [ "$target" == "$host" ]
+then
+  # If target is host, or target is running, switch directly.
+  switch $target
+elif [ -z "$is_target_running" ] && [ ! -z "$next_guest_has_the_same_gpu" ]
+then
+  # If target is not running, and if current and target acquires the same PCI devices, shutdown current first.
+  # We wait until all resources are released.
+  # And then run target. KVM switch will be done once target is running by means of hooks.
+  # And fork so that this hook script can exit gracefully.
+  virsh shutdown $current && ( sleep 10 && virsh start $target ) &
+elif [ -z "$is_target_running" ] && [ -z "$next_guest_has_the_same_gpu" ]
+then
+  virsh start $target
+fi

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+next=$1
+
+$VA_DISPATCH stream "switch $next"

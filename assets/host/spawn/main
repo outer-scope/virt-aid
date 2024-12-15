@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# I admit I'm a noob. :)
+# Previous versions of virt-aid uses systemd to overcome permission and libvirt issues.
+# For example, during guest start libvirt-hooks calls virsh to modify guest state, like attaching mouse/keyboard,
+# which, without systemd, system would crash. 
+# So, systemd "acts" like an external process that runs parallel outside libvirt system.
+# 'spawn' is a systemd-like script that "spawn"s a command on an external process.
+# 'spawn' is purely educational, sside from purposefully being distro agnostic.
+
+cmd=$1
+shift
+args=$@
+
+# Pass along SHARED_VAR, in case of the underlying call consists of only hooked calls.
+export SHARED_VAR=$SHARED_VAR
+
+. $VA_QUERY log
+. $VA_HELPERS
+
+log "Spawning $cmd by $(whoami)"
+
+# For security, only exec VA commands. :)
+( setsid nohup sh -c "SHARED_VAR=$SHARED_VAR $VA_DISPATCH $cmd $args" 2>>$logfile 1>/dev/null & disown ) &

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Installing ddcutil..."
+log "====================="
+
+unpack_package "ddcutil"

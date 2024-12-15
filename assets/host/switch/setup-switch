@@ -1,0 +1,17 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Installing Switch module"
+log "========================"
+
+printf "\n"
+echo "This module (poor man's KVM switch) switches input/output peripherals between guests and/or host."
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+$VA_PATH/utils/switch/setup-switch-output
+$VA_PATH/utils/switch/setup-switch-input

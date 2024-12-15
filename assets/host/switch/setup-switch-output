@@ -1,0 +1,208 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+test() {
+  display_number=$1
+  port=$2
+  default_port=$3
+  fb=$4
+  gpu=$5
+  drm=$6
+  gpu_code=${gpu/0000:/}
+  devices_with_virsh_format=$(echo pci_$gpu | tr : _ | tr . _)
+
+  is_card_enabled=$(cat /sys/bus/pci/devices/$gpu/drm/card*/$drm/enabled)
+
+  printf "\n"
+  echo "We will now perform switching test to check if the port you've given is indeed the correct one."
+  echo "If successful, your monitor will flicker a little bit, indicating the port switching process."
+
+  echo "Please wait until your screen goes back to this installation phase. Press enter to continue..."
+  read
+
+  # Switch.
+  sudo ddcutil setvcp 60 $port --display $display_number
+
+  sleep 5
+
+  # Go back to active monitor.
+  sudo ddcutil setvcp 60 $default_port --display $display_number
+
+  echo "Did your monitor filcker? Press y to confirm..."
+  read is_success
+
+  if [[ $is_success == "y" ]]
+  then
+    return 1
+  fi
+
+  return 0
+}
+
+# List gpu devices and iterate
+# for each gpu found, cat /sys/bus/pci/devices/pci:gpu.id.00/drm/card*/card*/enabled == enabled && cat /sys/bus/pci/devices/pci:gpu.id.00/drm/card*/card*/status == connected -> primary (host)
+# together with ddcutil getvcp 60, you get host monitor port as well as primary gpu monitor port.
+
+printf "\n"
+log "Setting up monitor switch. If no monitor switch detected, only primary GPU passthrough can be performed."
+
+printf "\n"
+log "Trying running Ddcutil. If this fails, we will try to inspect ddcutil iteratively. You can exit manually and try on later phases."
+
+while :
+do
+  printf "\n"
+  echo "Inspecting Ddcutil. Please wait..."
+
+  ddcutil_environment=$(sudo ddcutil environment)
+  is_display_detected=$?
+
+  [[ $is_display_detected == 0 ]] && break
+
+  if [ $is_display_detected -ne 0 ];
+  then
+    echo "Max ddcutil retries reached. Try again (y/n)?"
+    read retry
+  fi
+
+  if [[ $retry == "y" ]]
+  then
+    echo "Inspecting Ddcutil fails. You may need to re-install this module manually. Please consult the manual. Exiting..."
+    exit
+  fi
+done
+
+# lshw
+log "Inspecting lshw to retrieve info about displays."
+lshw_displays=$(sudo lshw -c display)
+lshw_businfo=$(echo "$lshw_displays" | grep "bus info" | awk '{print $NF}' | sed -e "s/^pci@//")
+lshw_fb=$(echo "$lshw_displays" | grep "logical name" | awk '{print $NF}')
+
+# ddcutil
+log "Inspecting ddcutil to retrieve additional info about displays."
+ddcutil_environment=$(sudo ddcutil environment)
+ddcutil_detect_simple=$(sudo ddcutil detect)
+ddcutil_detect=$(sudo ddcutil detect --verbose)
+ddcutil_display_numbers=$(echo "$ddcutil_detect_simple" | tr [:upper:] [:lower:] | grep display | awk '{print $NF}')
+ddcutil_displays=$(echo "$ddcutil_detect" | grep Model | awk '{print $NF}')
+ddcutil_pci_ids=$(echo "$ddcutil_detect" | grep "PCI device path:" | awk '{print $NF}' | awk -F'/' '{print $(NF-1)}')
+ddcutil_drm_connectors=$(echo "$ddcutil_detect" | grep "DRM connector:" | awk '{print $NF}')
+ddcutil_buses=$(echo "$ddcutil_detect" | grep "I2C bus:" | awk '{print $NF}' | awk -F'-' '{print $NF}')
+ddcutil_config=$(paste -d " " <(printf '%s\n' "${ddcutil_displays}") <(printf '%s\n' "${ddcutil_pci_ids}") <(printf '%s\n' "${ddcutil_buses}"))
+ddcutil_monitors=$(echo "$ddcutil_config" | awk '{print $1}' | uniq)
+ddcutil_monitors_with_duplicates=$(echo "$ddcutil_config" | awk '{print $1}' | awk '{dups[$1]++} END{for (num in dups) {print num,dups[num]}}')
+
+# Config format: [display_number] [model] [pci_id] [drm] [bus]
+config=$(paste -d " " <(printf '%s\n' "${ddcutil_display_numbers}") <(printf '%s\n' "${ddcutil_displays}") <(printf '%s\n' "${ddcutil_pci_ids}") <(printf '%s\n' "${ddcutil_drm_connectors}") <(printf '%s\n' "${ddcutil_buses}"))
+primary_gpu=$(extract_pci_id "$(echo "$ddcutil_environment" | grep "Primary video controller")")
+gpu_fb=$(paste -d " " <(printf '%s\n' "${lshw_businfo}") <(printf '%s\n' "${lshw_fb}"))
+# We gather only displays shared by gpus, since we will perform display switching only on these shared monitors.
+# https://www.unix.com/shell-programming-and-scripting/139114-find-duplicates-first-column-text-file.html
+#shared_displays=$(echo "$config" | awk '{a[NR]=$0; a[NR,"k"]=$1; k[$1]++} END {for (i=1; i<=NR; i++) if (k[a[i,"k"]] > 1) print a[i]}')
+shared_displays=$(echo "$config" | awk '$2 in a{print a[$2]; print} {a[$2]=$0}')
+
+# Remove existing display configs.
+rm -f $VA_PATH/utils/switch/00*.conf
+rm -f $VA_PATH/utils/switch/mon-*.conf
+rm -f $VA_PATH/utils/switch/primary-gpu.conf
+rm -f $VA_PATH/utils/switch/gpu-framebuffer.conf
+rm -f $VA_PATH/utils/switch/shared-displays.conf
+
+echo "$primary_gpu" > $VA_PATH/utils/switch/primary-gpu.conf
+echo "$gpu_fb" > $VA_PATH/utils/switch/gpu-framebuffer.conf
+echo "$shared_displays" > $VA_PATH/utils/switch/shared-displays.conf
+
+if [[ ! -z $shared_displays ]]
+then
+  log "Switch monitor found!"
+  log "Iterating GPUs connected to switch monitors."
+
+  while IFS= read -r -u3 shared_display; do
+    monitor=$(echo "$shared_display" | awk '{print $2}')
+    gpu=$(echo "$shared_display" | awk '{print $3}')
+    drm=$(echo "$shared_display" | awk '{print $4}')
+    gpu_code=${gpu/0000:/}
+    device=$(lspci -s $gpu_code)
+
+    printf "\n"
+    log "Setting up GPU device:"
+    log "$device"
+    log "on monitor:"
+    log "$monitor"
+
+    echo "Press enter to continue..."
+    read
+
+    display_number=$(echo "$shared_display" | awk '{print $1}')
+    bus_num=$(echo "$shared_display" | awk '{print $NF}')
+    default_port_base=$(sudo ddcutil getvcp 60 --display $display_number | awk '{print $NF}')
+    default_port=${default_port_base:4:4}
+
+    if [[ $gpu == $primary_gpu ]]
+    then
+      printf "\n"
+      echo "The configuration detects that this is the primary GPU set in BIOS. This indicates that the host is using/connected to this GPU. Auto saving a config file...";
+
+      # Save config. A primary GPU may have more than 1 shared monitor ports.
+      echo "$monitor $default_port $bus_num" >> $VA_PATH/utils/switch/$gpu.conf
+      # printf %s "$gpu $default_port $bus_num-" >> $VA_PATH/utils/switch/mon-$monitor.conf
+      echo "$gpu $default_port $bus_num" >> $VA_PATH/utils/switch/mon-$monitor.conf 
+    else
+      bus=${gpu_code:0:2}
+      slot=${gpu_code:3:2}
+      func=${gpu_code:6:1}
+      pci_xml="<address domain='0x0000' bus='0x$bus' slot='0x$slot' function='0x$func'/>"
+
+      ddcutil_capabilities=$(sudo ddcutil capabilities --display $display_number)
+
+      [[ ! -z $(echo "$ddcutil_capabilities" | grep failed) ]] && ( echo "Unfortunately, ddcutil fails for this monitor. Nothing we can do. Continuing..." && continue )
+
+      ddcutil_feature="${ddcutil_capabilities##*Feature: 60}"
+      ddcutil_feature="${ddcutil_feature%%Feature*}"
+      fb=$(echo "$gpu_fb" | grep "$gpu" | awk '{print $2}')
+
+      printf "\n"
+      echo "You must now specify which display port is connected to this GPU."
+      echo "The monitor port code looks something like: 0x11 or 0x03. For example:"
+
+      sudo ddcutil getvcp 60
+
+      echo "Due to the nature of ddcutil, probing the monitor port may not always a simple and straightforward process."
+      echo "Therefore, we will test the given port by redirecting to the monitor port, the GPU is connected to."
+
+      while :
+      do
+        printf "\n"
+        echo "The code is the two digits before the ':'. "
+        echo "Enter the monitor port from the following list (Enter none if you want to continue...):"
+
+        echo "$ddcutil_feature"
+
+        read port
+
+        [[ $port = "" ]] && echo "Exiting setup for this GPU..." && break
+
+        # Set port to be hex.
+        port=0x$port
+
+        test $display_number $port $default_port $fb $gpu $drm
+
+        [[ $? == 1 ]] && break
+      done
+
+      echo "$monitor $port $bus_num" >> $VA_PATH/utils/switch/$gpu.conf
+      # printf %s "$gpu $port $bus_num-" >> $VA_PATH/utils/switch/mon-$monitor.conf
+      echo "$gpu $port $bus_num" >> $VA_PATH/utils/switch/mon-$monitor.conf 
+    fi
+  done 3< <(echo "$shared_displays") # Redirect ouput to descriptor 3 due to reading user inputs while looping.
+else 
+  log "No switch monitor found. We assume that the host and guests have their own dedicated displays. Monitor switch is disabled. Only primary GPU passthrough can be done."
+  echo "" > $VA_PATH/utils/switch/disable-monitor-switch
+
+  # We still save gpu configs eventhough it contains nothing.
+  while IFS= read -r -u3 gpu; do
+    gpu=$(echo "$gpu" | awk '{print $1}')
+    echo "" > $VA_PATH/utils/switch/$gpu.conf
+  done 3< <(echo "$gpu_fb")
+fi

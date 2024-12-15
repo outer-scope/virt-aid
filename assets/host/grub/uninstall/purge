@@ -1,0 +1,14 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+log "Uninstalling GRUB"
+log "================="
+
+log "Removing virt-aid GRUB config..."
+
+sed -i -e "s/ intel_iommu=on//g" $VA_PATH/utils/grub/grub
+sed -i -e "s/ amd_iommu=on//g" $VA_PATH/utils/grub/grub
+sed -i -e "s/ video=efifb:off//g" $VA_PATH/utils/grub/grub
+
+sudo update-grub || sudo grub2-mkconfig -o $(readlink -f /etc/grub2-efi.cfg)

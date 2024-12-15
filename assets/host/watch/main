@@ -1,0 +1,40 @@
+#!/bin/bash
+
+guest=$1
+
+# We identify a race condition where the guest log hasn't finished updating itself but
+# the stream module tries to identify the chardev device for comm. This resultes in inaccuracies
+# when obtaining the chardev, hence the comm fails to listen to inexistent device.
+# Wait until the log finishes updating itself.
+sleep 5
+
+# Find the last occurence of "char device redirected to /dev/pts/xx" from qemu guest log.
+# Extract the chardev device to initiate comm.
+. $VA_QUERY stream $guest
+. $VA_HELPERS
+
+# Watcher inspects messages from guest by listening to chardev connected to guests' tty device and then dispatching them.
+# Every guest will spawn new watch().
+watch () (
+  log "Watching $guest..."
+
+  # For every guest, we spawn a new "guest watch".
+  # Since the incoming messages can also be boot messages from VM, we need to sanitize.
+  while IFS= read line;
+  do
+    # We sanitize line input having ^M carriage return, if any. And then extract the content of xml cmd.
+    line=$(echo "$line" | sed 's/\r$//')
+    line=$(echo "${line//[$'\t\r\n']}")
+
+    log "Processing line $line for $guest"
+
+    cmd=$(echo $line | grep -Poz "<virt-aid-cmd>\s*\K[\s\S]*(?=</virt-aid-cmd>)")
+
+    # The guest name is passed as shared var, in case needed by callee.
+    [[ ! -z $cmd ]] && SHARED_VAR=$guest && export SHARED_VAR && $VA_DISPATCH $cmd
+  done < <(sudo cat $chardev)
+
+  exit
+)
+
+watch &

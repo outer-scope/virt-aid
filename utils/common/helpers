@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# To determine if virt-aid is installed in a virtual environment or not.
+is_virtual=FALSE
+grep -q ^flags.*\ hypervisor\  /proc/cpuinfo
+[[ $? == 0 ]] && is_virtual=TRUE
+
+intersect() {
+  list1=$1
+  list2=$2
+
+  if [ -z "$list1" ] || [ -z "$list2" ];
+  then
+    echo ""
+  else
+    echo "$list1" | grep "$list2"
+  fi
+}

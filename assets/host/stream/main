@@ -1,0 +1,14 @@
+#!/bin/bash
+
+guest=$1
+shift
+msg=$@
+
+. $VA_QUERY stream $guest
+. $VA_HELPERS
+
+log "Streaming message \"$msg\" to $guest via $chardev"
+
+# Due to some distros disabling qemu guest-exec/guest-file-write as well as permission denied issues, we decide to go another route
+# to communicate with guests.
+echo "<virt-aid-cmd>$msg</virt-aid-cmd>" | sudo tee $chardev

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+. $VA_QUERY stream
+. $VA_HELPERS
+
+cmd=$@
+
+log "Streaming message \"$msg\" to host via $tty"
+
+# Since we are hijacking the qemu communication port,
+# We send virt-aid command using xml format to distinguish itself from the rest of the messages.
+echo "<virt-aid-cmd>$cmd</virt-aid-cmd>" | sudo tee $tty

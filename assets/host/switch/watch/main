@@ -1,0 +1,25 @@
+#!/bin/bash
+
+. $VA_QUERY flag watchdog
+
+switch_shutdown() {
+  $VA_DISPATCH switch/shutdown
+}
+
+run_watchdog() (
+  # To avoid having multiple watchdogs, we check for watchdog flag.
+  if [[ -z "$is_flagged" ]]
+  then
+    # We start watchdog.
+    # The purpose of this watchdog is to listen to SIGTERM.
+    # If host shuts down, we call switch/shutdown to forcefully give resources back to host.
+    # It is arguably sufficient to run watchdog if a guest is running. Otherwise I/O stays at host.
+    $VA_DISPATCH flag watchdog
+
+    trap switch_shutdown SIGTERM
+
+    sleep infinity
+  fi
+)
+
+run_watchdog &

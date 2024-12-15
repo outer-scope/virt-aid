@@ -1,0 +1,5 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+log $@

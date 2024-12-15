@@ -1,0 +1,16 @@
+#!/bin/bash
+
+. $VA_PATH/utils/stream/query
+. $VA_HELPERS
+
+while IFS= read line;
+do
+  line=$(echo "$line" | sed 's/\r$//')
+  line=$(echo "${line//[$'\t\r\n']}")
+
+  log "Processing line $line via $tty"
+
+  cmd=$(echo $line | grep -Poz "<virt-aid-cmd>\s*\K[\s\S]*(?=</virt-aid-cmd>)")
+
+  [[ ! -z $cmd ]] && $VA_DISPATCH $cmd
+done < <(sudo cat $tty)

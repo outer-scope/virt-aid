@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Read vm name
+while :
+do
+  echo "Type the vm name, followed by [ENTER] (Entering empty string to exit):"
+  read name
+  [[ $name = "" ]] && exit || break
+done
+
+# Read vm description
+echo "Type the vm desc, followed by [ENTER]:"
+read desc
+
+# If the guest isn't registered yet, flag fresh install.
+[[ ! -f $VA_PATH/utils/guest-setup/$name.conf ]] && $VA_DISPATCH flag $name-fresh-install
+
+# Save config.
+echo "$desc" > $VA_PATH/utils/guest-setup/$name.conf
+
+# Set shared message to pass on to any later consumers.
+SHARED_VAR=$name

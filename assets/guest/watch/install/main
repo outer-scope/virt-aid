@@ -1,0 +1,17 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Installing Watch Services"
+log "========================"
+
+printf "\n"
+echo "This module registers virt-aid service to be executed on boot and shutdown."
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+cp $VA_PATH/utils/watch/install/assets/va-watch.service /etc/systemd/system/
+systemctl enable va-watch.service

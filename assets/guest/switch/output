@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+monitor=$1
+port=$2
+
+. $VA_HELPERS
+
+log "Switching output monitor $monitor port $port..."
+
+config=$(cat $VA_PATH/utils/switch/mon-$monitor.conf)
+bus_num=$(echo "$config" | awk '{print $NF}')
+
+# We try to switch into input $port using $bus_num
+sudo ddcutil setvcp 60 $port --bus $bus_num && $VA_DISPATCH stream flag switch-output-by-guest-success

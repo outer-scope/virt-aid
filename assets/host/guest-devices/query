@@ -1,0 +1,16 @@
+#!/bin/bash
+
+guest_name=$1
+
+. $VA_HELPERS
+. $VA_QUERY switch
+
+devices=""
+[[ -f $VA_PATH/utils/guest-devices/$guest_name.conf ]] && devices=$(cat $VA_PATH/utils/guest-devices/$guest_name.conf)
+# Sanitize input for virsh.
+devices_with_virsh_format=$(get_pci_id_with_virsh_format "$devices")
+primary_gpu_passthrough_guests=$(cat $VA_PATH/utils/guest-devices/single-gpu-passthrough-guests.conf)
+gpu_passthrough_guests=$(cat $VA_PATH/utils/guest-devices/gpu-passthrough-guests.conf)
+guest_gpu_device=$(intersect "$gpu_devices" "$devices")
+is_primary_gpu_passthrough_guest=$(echo "$primary_gpu_passthrough_guests" | grep "$guest_name")
+is_gpu_passthrough_guest=$(echo "$gpu_passthrough_guests" | grep "$guest_name")

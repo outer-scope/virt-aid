@@ -1,0 +1,39 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Uninstalling virt-aid"
+log "====================="
+
+printf "\n"
+echo "This will uninstall all installed virt-aid related packages, services, libvirt hooks, etc. Please check the backup folder afterwards."
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+$VA_DISPATCH uninstall/purge
+
+# Backup first.
+log "Creating backup"
+log "==============="
+
+folder=/usr/local/bin/virt-aid-backup-$(date +"%Y%m%d-%H%M%S")
+mkdir "$folder"
+cp -r $VA_PATH $folder
+
+log "Remove virt-aid"
+log "==============="
+
+sudo rm -rf $VA_PATH
+
+sudo sed -i '/VA_PATH/d' /etc/environment
+sudo sed -i '/VA_DISPATCH/d' /etc/environment
+sudo sed -i '/VA_QUERY/d' /etc/environment
+sudo sed -i '/VA_HELP/d' /etc/environment
+
+echo "Restarting... Press enter to continue..."
+read
+
+sudo shutdown -r now

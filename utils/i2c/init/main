@@ -1,0 +1,23 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Installing I2C"
+log "=============="
+
+printf "\n"
+echo "Together with ddcutil, it allows host to interface with the monitor."
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+log "Setting up..."
+sudo cp $VA_PATH/utils/i2c/init/i2c.conf /etc/modules-load.d/
+
+log "Updating initramfs. Please wait..."
+sudo update-initramfs -u || sudo dracut --regenerate-all --force || sudo mkinitcpio -P
+
+log "Loading i2c-dev module to take effect directly. Please wait..."
+sudo modprobe i2c-dev

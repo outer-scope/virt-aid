@@ -1,0 +1,16 @@
+#!/bin/bash
+
+current=$(cat $VA_PATH/utils/switch/current)
+
+. $VA_HELPERS
+
+get_active_guests
+
+next=
+# In case the first item is empty, take the second item as the next one.
+[[ ! -z "${active_guests_with_passthrough[0]}" ]] && next=${active_guests_with_passthrough[0]}
+[[ -z "$next" ]] && next=${active_guests_with_passthrough[1]}
+[[ -z "$next" ]] && next=host
+
+log "Giving resources to: $next"
+$VA_DISPATCH switch "$next"

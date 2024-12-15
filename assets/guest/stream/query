@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# sudo systemctl start serial-getty@ttyS0.service
+
+# We get assigned tty which is connected to host stream device /dev/xxx/xx
+tty=$(sudo dmesg | grep tty | grep "at I/O" | sed -E 's/^[^tty]*(tty[a-zA-Z0-9][a-zA-Z0-9]*).*/\1/')
+tty=/dev/$tty

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+. $VA_HELPERS
+
+printf "\n"
+log "Installing Grub module"
+log "========================="
+
+printf "\n"
+echo "WARNING! This module adds GRUB configurations for enabling IOMMU features needed to perform device passthrough."
+echo "The original GRUB configuration will be backed up under $VA_PATH/utils/grub/grub-ori."
+echo "This module tries to update the configuration automatically."
+
+printf "\n"
+echo "Press enter to continue..."
+read
+
+log "Backing up original grub..."
+
+# Backup original grub after fresh pc install
+cp /etc/default/grub $VA_PATH/utils/grub/grub-ori
+
+$VA_PATH/utils/grub/update-grub
