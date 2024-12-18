@@ -15,6 +15,7 @@ read
 
 # Hooks will be used to govern devices to be used by vms as well as releasing
 # resources back to host.
+[[ ! -d /etc/libvirt/hooks/ ]] && mkdir /etc/libvirt/hooks/
 sudo cp $VA_PATH/utils/libvirt-hooks/install/assets/qemu /etc/libvirt/hooks/qemu
 sudo chmod +x /etc/libvirt/hooks/qemu
 
