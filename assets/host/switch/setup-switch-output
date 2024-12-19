@@ -152,7 +152,7 @@ then
       func=${gpu_code:6:1}
       pci_xml="<address domain='0x0000' bus='0x$bus' slot='0x$slot' function='0x$func'/>"
 
-      ddcutil_capabilities=$(sudo ddcutil capabilities --display $display_number)
+      ddcutil_capabilities=$(sudo ddcutil capabilities --bus $bus_num)
 
       [[ ! -z $(echo "$ddcutil_capabilities" | grep failed) ]] && ( echo "Unfortunately, ddcutil fails for this monitor. Nothing we can do. Continuing..." && continue )
 
