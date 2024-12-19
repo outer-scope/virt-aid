@@ -3,7 +3,7 @@
 . $VA_HELPERS
 
 test() {
-  bus_num=$1
+  bus_number=$1
   port=$2
   default_port=$3
   gpu=$4
@@ -20,12 +20,12 @@ test() {
   read
 
   # Switch.
-  sudo ddcutil setvcp 60 $port --bus $bus_num
+  sudo ddcutil setvcp 60 $port --bus $bus_number
 
   sleep 5
 
   # Go back to active monitor.
-  sudo ddcutil setvcp 60 $default_port --bus $bus_num
+  sudo ddcutil setvcp 60 $default_port --bus $bus_number
 
   echo "Did your monitor filcker? Press y to confirm..."
   read is_success
