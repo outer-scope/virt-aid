@@ -3,7 +3,7 @@
 . $VA_HELPERS
 
 test() {
-  display_number=$1
+  bus_num=$1
   port=$2
   default_port=$3
   gpu=$4
@@ -20,12 +20,12 @@ test() {
   read
 
   # Switch.
-  sudo ddcutil setvcp 60 $port --display $display_number
+  sudo ddcutil setvcp 60 $port --bus $bus_num
 
   sleep 5
 
   # Go back to active monitor.
-  sudo ddcutil setvcp 60 $default_port --display $display_number
+  sudo ddcutil setvcp 60 $default_port --bus $bus_num
 
   echo "Did your monitor filcker? Press y to confirm..."
   read is_success
@@ -183,7 +183,7 @@ then
         # Set port to be hex.
         port=0x$port
 
-        test $display_number $port $default_port $gpu
+        test $bus_num $port $default_port $gpu
 
         [[ $? == 1 ]] && break
       done
