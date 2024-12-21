@@ -20,6 +20,7 @@
 >   4. an AMD Radeon RX 6900 XT GPU,
 >   1. a **Fedora 40**/**Ubuntu 24.10**/**Debian 12** host,
 >   2. **Fedora 40**/**Ubuntu 24.10**/**Zorin 17** guests,
+> For debugging purposes, an external device that can ssh to the host would be very helpful, in case of the host's inability to react to I/O.
 
 ## **2. Installing `virt-aid`**
 
@@ -535,9 +536,9 @@ sudo $VA_DISPATCH switch [target]
 > - If a guest having a primary GPU is active, switching to host is disabled due to the host losing primary GPU.
 > - Switching from a guest to an inactive target guest will automatically start the target guest.
 
-> **💡 Tips**
+> **💡 Important Tips**
 >
-> An external device which can ssh to the host machine would be very helpful.
+> **An external device which can ssh to the host machine would be very helpful.**
 >
 > If problem occurs, e.g. monitor switch succeeds but input peripherals switch fails, or vice-versa:
 >   - Change the monitor input manually to the host port,

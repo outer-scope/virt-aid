@@ -4,7 +4,7 @@ guest=$1
 
 $VA_DISPATCH switch/input $guest &
 
-# Another thorough observation shows that, due to the vfio-startup always being executed,
+# Another lesson learned that, due to the vfio-startup always being executed,
 # the host ddcutil probe always fails for all GPUs, even for those not passed through to guests.
 # So if give a non primary GPU to a guest, the primary GPU still vanishes from host due to vfio-startup.
 # Therefore, when a guest is started, we try to revive (give back) any left-over GPUs to the host,
