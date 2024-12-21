@@ -8,4 +8,6 @@ guest=$1
 [[ ! -z "$is_flagged" ]] && $VA_DISPATCH flag $guest-fresh-install
 
 # Switch module handles the handing over of I/O to the next guest/host (if no other guests are active.)
-$VA_DISPATCH switch/next
+# We sleep and detach, due to the fact that there is a possibility that the host doesn't yet fully
+# recover all the GPUs since vfio-startup is on always executed mode (see qemu script.)
+( sleep 3 && $VA_DISPATCH switch/next ) &

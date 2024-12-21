@@ -2,4 +2,17 @@
 
 guest=$1
 
-$VA_DISPATCH switch $guest &
+$VA_DISPATCH switch/input $guest &
+
+# Another thorough observation shows that, due to the vfio-startup always being executed,
+# the host ddcutil probe always fails for all GPUs, even for those not passed through to guests.
+# So if give a non primary GPU to a guest, the primary GPU still vanishes from host due to vfio-startup.
+# Therefore, when a guest is started, we try to revive (give back) any left-over GPUs to the host,
+# unless all GPUs are taken. This is done so that we can still switch to host.
+# This requirement will result in vfio-startup/teardown being executed on guest startup/shutdown.
+#
+# Why always execute vfio-startup? Based on observations, in a host with desktop environment,
+# like GNOME, KDE, etc, all GPUs are utilized. Therefore, to detach a secondary GPU,
+# a vfio-startup is still needed to be executed, otherwise system crash. Due to this requirement,
+# the host will also lose it's primary GPU.
+$VA_DISPATCH libvirt-hooks/vfio-teardown.

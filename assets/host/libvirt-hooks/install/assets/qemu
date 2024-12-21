@@ -20,11 +20,18 @@ export $(cat /etc/environment | xargs)
 ############
 
 prepare-begin() {
+  # Check device integrity. If fails, fail guest run to avoid partially connected devices.
+  . $VA_QUERY switch/check-devices $GUEST_NAME
+
   log "prepare-begin hook for $GUEST_NAME"
   log "============="
+  
+  # Due to the vfio-startup always being executed (see line 56 below,) ddcutil probe fails on all devices.
+  # we need to switch output on earliest possible moment.
+  su -c "$VA_DISPATCH spawn switch/output $GUEST_NAME"
+  
+  sleep 3
 
-  # Check device integrity. If fails, fail guest run to avoid partially connected devices.
-  #. $VA_QUERY switch/check-devices $GUEST_NAME
   if [ ! -z "$is_primary_gpu_passthrough_guest" ]; then
     # If primary GPU guest and the host has startx, logout all X sessions. Otherwise system crash (segmentation fault).
     # This is also mentioned in https://gitlab.com/risingprismtv/single-gpu-passthrough
@@ -40,17 +47,15 @@ prepare-begin() {
 
       sleep 2
     fi
-
-    # If guest is acquiring host gpu, execute vfio-startup.
-    log "Executing vfio-startup..."
-    su -c "$VA_DISPATCH spawn libvirt-hooks/vfio-startup"
-  else
-    # Otherwise, load vfio related modules, if not already loaded.
-    sudo modprobe vfio
-    sudo modprobe vfio-pci
   fi
 
-  sleep 1
+  # From observation, it is found out that if the host has a desktop manager (GNOME, KDE, etc,)
+  # the vfio-startup has to be executed no matter what, prolly due to the host acquires all GPUs.
+  # So, detach all GPUs from the host to proceed. 
+  log "Executing vfio-startup..."
+  su -c "$VA_DISPATCH spawn libvirt-hooks/vfio-startup"
+
+  sleep 3
 
   readarray -t pcis < <(echo "$devices_with_virsh_format")
   for pci in "${pcis[@]}"
@@ -77,11 +82,8 @@ release-end() {
   virsh nodedev-reattach $virsh_pci
   done
 
-  # If guest is acquiring host gpu, resume display to host by re-binding vtconsoles.
-  if [ ! -z "$is_primary_gpu_passthrough_guest" ]; then
   log "Executing vfio-teardown..."
   su -c "$VA_DISPATCH spawn libvirt-hooks/vfio-teardown"
-  fi
 
   sleep 1
 }

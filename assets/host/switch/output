@@ -54,6 +54,8 @@ else
   guest_port_configs=$(cat $VA_PATH/utils/switch/$guest_gpu_device.conf)
   # shared_monitor_configs=$(grep -Rnw $VA_PATH/utils/switch/mon-*.conf -e "$guest_device" | awk -F  ':' '{print $1}' | awk -F  '/' '{print $NF}')
 
+  # So, due to the vfio-startup/teardown executions, the host (re-at/de)tach GPUs onto the system
+  # and when it does, the host might assign different bus numbers to the GPUs. In this case, ddcutil re-probes.
   ddcutil_detect=$(sudo ddcutil detect)
 
   # For every guest port config, we get the monitor config to get all the connected i2c buses.
