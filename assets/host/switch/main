@@ -12,8 +12,7 @@ switch() {
   $VA_DISPATCH flag switch
 
   $VA_PATH/utils/switch/output $target
-  # We assume that output switch always succeeds. If not, manualy output switch is necessary.
-  $VA_PATH/utils/switch/input $target
+  [[ $? != 99 ]] && $VA_PATH/utils/switch/input $target # Exit code 99 is specific to host not having primary GPU.
 
   # Remove flag after 5 seconds.
   ( sleep 5 && $VA_DISPATCH flag switch ) &
