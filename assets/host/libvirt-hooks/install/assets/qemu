@@ -82,9 +82,6 @@ release-end() {
   virsh nodedev-reattach $virsh_pci
   done
 
-  log "Executing vfio-teardown..."
-  su -c "$VA_DISPATCH spawn libvirt-hooks/vfio-teardown"
-
   sleep 1
 }
 

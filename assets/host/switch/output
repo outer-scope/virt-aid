@@ -27,6 +27,18 @@
 
 target=$1
 
+ddcutil_detect=$(sudo ddcutil detect)
+
+# So, due to the vfio-startup/teardown executions, the host (re-at/de)tach GPUs onto the system
+# and when it does, the host might assign different bus numbers to the GPUs. In this case, ddcutil re-probes.
+get_new_bus_number () {
+  monitor=$1
+
+  # Get the line numbers where the bus number is diplayed for the given monitor in ddcutil detect:
+  line_numbers=$(echo "$ddcutil_detect" | grep -n $monitor | cut -f1 -d: | awk '{ printf($1-4 "p; ") }')
+  bus_numbers=$(echo "$ddcutil_detect" | sed -n "$line_numbers" | awk '{print $NF}' | sed -n -e 's/^.*-//p')
+}
+
 get_is_primary_gpu_available
 
 host="host"
@@ -36,17 +48,39 @@ then
 # If device driver is vfio-pci, this device is passed through (acquired by a guest.)
   if [ -z "$is_primary_gpu_available" ];
   then
+    # Another lesson learned:
+    # In a host with desktop env like GNOME, KDE, etc, ALL GPUs are UTILIZED, if set in BIOS.
+    # Therefore, assigning a non-primary GPU to the guest requires detaching from desktop session as well.
+    # Hence executing vfio-startup regardless of guest type.
+    # Due to this requirement, switching to host from a non-primary GPU fails since
+    # ddcutil probe failure, due to no GPUs are detected.
+    # To circumvent this problem, we re-execute vfio-teardown, somewhere after vfio-startup.
+    # Here's the catch:
+    # Executing vfio-teardown directly after starting primary GPU guests, will make the non-primary GPU as the new "primary GPU".
+    # Meaning that the input ports are now switched.
+    # To avoid adding complicated logic onto an already over-bloated ones, it is decided to execute vfio-teardown
+    # only if we want to switch to host, either from shutting down a guest, or switching from a non-primary GPU guest to host.
+    #
+    # Make sure the host has the primary GPU again attached to desktop session.
+    $VA_DISPATCH libvirt-hooks/vfio-teardown
+
+    # Rerun ddcutil probe after giving back GPU to host and reattaching desktop session.
+    ddcutil_detect=$(sudo ddcutil detect)
+
     log "Switching to host..."
 
     # If primary GPU is available, do the switch.
     # A GPU may be connected to 2 monitors.
     while IFS= read -r host_port; do
-      switch_monitor $host_port
+      host_port=( $host_port )
+
+      get_new_bus_number ${host_port[0]}
+      switch_monitor ${host_port[0]} ${host_port[1]} $bus_numbers
     done <<< "$host_ports"
   else
     # If primary GPU is not available, exit with error so input peripherals will not get switched.
     log "Host primary GPU unavailable. Exiting..."
-    exit 1
+    exit 99
   fi
 else
   . $VA_QUERY guest-devices $target
@@ -54,9 +88,6 @@ else
   guest_port_configs=$(cat $VA_PATH/utils/switch/$guest_gpu_device.conf)
   # shared_monitor_configs=$(grep -Rnw $VA_PATH/utils/switch/mon-*.conf -e "$guest_device" | awk -F  ':' '{print $1}' | awk -F  '/' '{print $NF}')
 
-  # So, due to the vfio-startup/teardown executions, the host (re-at/de)tach GPUs onto the system
-  # and when it does, the host might assign different bus numbers to the GPUs. In this case, ddcutil re-probes.
-  ddcutil_detect=$(sudo ddcutil detect)
 
   # For every guest port config, we get the monitor config to get all the connected i2c buses.
   while IFS= read -r guest_port_config; do
@@ -65,9 +96,7 @@ else
     guest_port=${guest_port_config[1]}
     guest_bus=${guest_port_config[2]}
 
-    # Get the line numbers where the bus number is diplayed for the given monitor in ddcutil detect:
-    line_numbers=$(echo "$ddcutil_detect" | grep -n $guest_monitor | cut -f1 -d: | awk '{ printf($1-4 "p; ") }')
-    bus_numbers=$(echo "$ddcutil_detect" | sed -n "$line_numbers" | awk '{print $NF}' | sed -n -e 's/^.*-//p')
+    get_new_bus_number $guest_monitor
 
     # Considering that a GPU can connect to more that two monitors, and that if that GPU is passed through,
     # we try performing ddcutil from the same monitor, using other GPU that connects with that same monitor.
