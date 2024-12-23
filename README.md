@@ -476,6 +476,13 @@ Enter the number of the pci device to be passed through (Enter blank to continue
 > **ⓘ Info**  
 > After a successful guest installation, please refer to the section **Installation in Guest Environment** for installing `virt-aid` on guest.
 
+> **⚠️ Warning**  
+> In case of a guest startup **failure**, e.g. forgetting to add installation disk so the guest cannot install, please execute the following before resuming installation:
+>
+> `sudo $VA_DISPATCH flag $guest_name-fresh-install`
+>
+> where `$guest_name` is the name of the guest we are trying to install.
+
 ### **7.4. Creating Our Second Guest `flux`**
 
 > **ⓘ Info**  
