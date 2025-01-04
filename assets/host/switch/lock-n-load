@@ -1,0 +1,23 @@
+#!/bin/bash
+
+target_guest=$1
+
+lock_n_switch() (
+  # Flag.
+  $VA_DISPATCH flag switch-lock
+
+  # Switch output. Input switch will be done on started-begin.
+  $VA_DISPATCH switch/output $target_guest
+
+  sleep 10
+
+  # Unflag.
+  $VA_DISPATCH flag switch-lock
+)
+
+. $VA_QUERY flag switch-lock
+
+if [[ -z "$is_flagged" ]]
+then
+  lock_n_switch &
+fi

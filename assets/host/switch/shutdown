@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Lock switch.
+$VA_DISPATCH flag switch-lock
+
 current=$(cat $VA_PATH/utils/switch/current)
 
 . $VA_HELPERS
@@ -16,9 +19,6 @@ switch_output_to_host() {
   # We only switch monitor, since the shutdown automatically sends keyboard & mouse to host.
 
   # TODO: Refine!
-
-  # Lock switch! 
-  $VA_DISPATCH flag switch
 
   log "Switching monitor to host during shutdown..."
   log "============================================"

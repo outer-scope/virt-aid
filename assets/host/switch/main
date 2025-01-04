@@ -8,24 +8,11 @@ export $(cat /etc/environment | xargs)
 switch() {
   target=$1
 
-  # Flag switch so that concurrent switch can take notice.
-  $VA_DISPATCH flag switch
-
   $VA_PATH/utils/switch/output $target
-  [[ $? != 99 ]] && $VA_PATH/utils/switch/input $target # Exit code 99 is specific to host not having primary GPU.
-
-  # Remove flag after 5 seconds.
-  ( sleep 5 && $VA_DISPATCH flag switch ) &
 }
 
 target=$1
 host="host"
-
-# If switch flag exists (switch is undergoing), exit.
-# This also works on multiple guest autostart. We apply the principle of "early bird gets the worm."
-# meaning that the first guest will "block" the rest from switching.
-. $VA_QUERY flag switch
-[[ ! -z "$is_flagged" ]] && exit
 
 # Check device integrity. If fails, fail guest run to avoid partially connected devices.
 . $VA_QUERY switch/check-devices $target

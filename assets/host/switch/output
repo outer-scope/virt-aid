@@ -42,6 +42,8 @@ get_new_bus_number () {
 get_is_primary_gpu_available
 
 host="host"
+is_successful=0;
+successful_monitor_switch=
 
 if [ "$target" == "$host" ];
 then
@@ -77,32 +79,37 @@ then
       get_new_bus_number ${host_port[0]}
       switch_monitor ${host_port[0]} ${host_port[1]} $bus_numbers
     done <<< "$host_ports"
+
+    # We know this will work, so set successful for formality.
+    is_successful=1
   else
     # If primary GPU is not available, exit with error so input peripherals will not get switched.
     log "Host primary GPU unavailable. Exiting..."
-    exit 99
+    exit 1
   fi
 else
-  . $VA_QUERY guest-devices $target
-  guest_device=$(get_pci_id_with_virsh_format $guest_gpu_device)
-  guest_port_configs=$(cat $VA_PATH/utils/switch/$guest_gpu_device.conf)
-  # shared_monitor_configs=$(grep -Rnw $VA_PATH/utils/switch/mon-*.conf -e "$guest_device" | awk -F  ':' '{print $1}' | awk -F  '/' '{print $NF}')
+  exec_switch() {
+    . $VA_QUERY guest-devices $target
+    guest_device=$(get_pci_id_with_virsh_format $guest_gpu_device)
+    guest_port_configs=$(cat $VA_PATH/utils/switch/$guest_gpu_device.conf)
+    # shared_monitor_configs=$(grep -Rnw $VA_PATH/utils/switch/mon-*.conf -e "$guest_device" | awk -F  ':' '{print $1}' | awk -F  '/' '{print $NF}')
 
+    # For every guest port config, we get the monitor config to get all the connected i2c buses.
+    while IFS= read -r guest_port_config; do
+      guest_port_config=( $guest_port_config )
+      guest_monitor=${guest_port_config[0]}
+      guest_port=${guest_port_config[1]}
+      guest_bus=${guest_port_config[2]}
 
-  # For every guest port config, we get the monitor config to get all the connected i2c buses.
-  while IFS= read -r guest_port_config; do
-    guest_port_config=( $guest_port_config )
-    guest_monitor=${guest_port_config[0]}
-    guest_port=${guest_port_config[1]}
-    guest_bus=${guest_port_config[2]}
+      # If the monitor is already successfuly switched, skip.
+      [[ ! -z "$successful_monitor_switch" ]] && [[ ! -z "$(echo "$successful_monitor_switch" | grep "$guest_monitor")" ]] && continue
 
-    get_new_bus_number $guest_monitor
+      get_new_bus_number $guest_monitor
 
-    # Considering that a GPU can connect to more that two monitors, and that if that GPU is passed through,
-    # we try performing ddcutil from the same monitor, using other GPU that connects with that same monitor.
-    if [[ ! -z "$bus_numbers" ]]
-    then
-      # If bus_numbers is empty, we are sure that all GPUs are taken.
+      # Considering that a GPU can connect to more that two monitors, and that if that GPU is passed through,
+      # we try performing ddcutil from the same monitor, using other GPU that connects with that same monitor.
+      # If bus_numbers are not empty, we know that the host stil have some GPUs.
+      # If not, guests will help.
       while IFS= read -r bus_number; do
         log "Switching output monitor $guest_monitor port $guest_port bus $guest_bus using i2c bus $bus_number from other GPU by host..."
         
@@ -111,21 +118,44 @@ else
         # If successful, break.
         if [[ $? == 0 ]]
         then
+          # Record successful monitor switch for comparison.
+          successful_monitor_switch="$guest_monitor $successful_monitor_switch"
+          is_successful=$((is_successful + 1))
+
           break
         fi
       done <<< "$bus_numbers"
-    else
-      # If all GPUs are taken from host, we rely on guests to perform the switch.
+    done <<< "$guest_port_configs"
+
+    # If the above (partially) succeeds, we return.
+    [[ "$is_successful" != "0" ]] && return $is_successful
+
+    sleep 3
+
+    # Reset.
+    guest_port_config=
+    is_successful=0
+    while IFS= read -r guest_port_config; do
+      guest_port_config=( $guest_port_config )
+      guest_monitor=${guest_port_config[0]}
+      guest_port=${guest_port_config[1]}
+      guest_bus=${guest_port_config[2]}
+
+      # If the monitor is already successfuly switched, skip.
+      [[ ! -z "$(echo "$successful_monitor_switch" | grep "$guest_monitor")" ]] && continue
+
+      get_new_bus_number $guest_monitor
+
+      # If all GPUs are taken from host, or if all the above options are exhausted, we rely on guests to perform the switch.
       while IFS= read -r line;
       do
+
         params=( $line )
         gpu_id=${params[0]}
         other_bus=${params[2]}
 
         # If still failed, we switch using available guest acquiring that GPU.
         guest_name=$(get_guest_name_by_pci_id $gpu_id)
-
-        . $VA_QUERY flag $guest_name-fresh-install
 
         # An issue arose when switching to a guest while performing a fresh install, where the host cannot perform the switch
         # due to primary gpu loss. The switch will try to invoke the guest ddcutil by messaging that guest through the console device (see stream,)
@@ -134,29 +164,42 @@ else
         # print something like "The highlighted option will be automatically...".
         #
         # To avoid this, we skip invoking the ddcutil from the guest target itself. The switch should be done by either the host or other helping guests.
-        [[ ! -z "$is_flagged" ]] && continue
+        [[ ! -f $VA_PATH/utils/switch/registry/$target ]] && continue
 
         log "Next try... Switching output monitor $guest_monitor port $guest_port bus $guest_bus by $guest_name..."
         switch_monitor_by_guest $guest_name $guest_monitor $guest_port
 
         # Pause to take effect.
-        sleep 3
+        sleep 1
 
         # Inspect switching output by the guest.
         . $VA_QUERY flag switch-output-by-guest-success
 
-        # If switching using guest help succeeds, continue switching other monitor.
+        # Unflag after successful switch by guest.
         if [[ ! -z $is_flagged ]]
         then
           $VA_DISPATCH flag switch-output-by-guest-success
+          successful_monitor_switch="$guest_monitor $successful_monitor_switch"
+          is_successful=$((is_successful + 1))
+
           break
         fi
       done < <(cat $VA_PATH/utils/switch/mon-$guest_monitor.conf)    
-    fi
+    done <<< "$guest_port_configs"
 
+    return $is_successful
+  }
 
-    # If all options are already exhausted, there's basically nothing we can do.
-    # virt-aid will continue with input switch. If anything goes wrong, user can still connect/disconnect all input
-    # peripherals, so that it will land again on host space, and user can still manually change monitor input source.
-  done <<< "$guest_port_configs"
+  # So, based on observation, during multiple autostart guests with dual monitors setup, switch successfully performs
+  # on one monitor and not the other, due to a race condition where the guests are not yet alive, so they cannot help with the switch,
+  # but the host already lost all GPUs.
+  is_successful=$(exec_switch)
+fi
+
+# If all options are already exhausted, there's basically nothing we can do.
+# If successful, eventhough partially, input switch can proceed.
+# Otherwise, input switch should be skipped so users won't get partially switched I/O.
+if [[ "$is_successful" != "0" ]]
+then
+  $VA_DISPATCH switch/input $target
 fi

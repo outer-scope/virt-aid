@@ -28,7 +28,10 @@ prepare-begin() {
   
   # Due to the vfio-startup always being executed (see line 56 below,) ddcutil probe fails on all devices.
   # we need to switch output on earliest possible moment.
-  su -c "$VA_DISPATCH spawn switch/output $GUEST_NAME"
+  # And since autostart guests will race to get I/O, we lock switch exclusively on every guest start
+  # to avoid race condition, and switch will try to give I/O to the next available guest. 
+  # We apply the principle of "early bird gets the worm."
+  su -c "$VA_DISPATCH spawn switch/lock-n-load $GUEST_NAME"
   
   sleep 3
 

@@ -12,9 +12,6 @@ done
 echo "Type the vm desc, followed by [ENTER]:"
 read desc
 
-# If the guest isn't registered yet, flag fresh install.
-[[ ! -f $VA_PATH/utils/guest-setup/$name.conf ]] && $VA_DISPATCH flag $name-fresh-install
-
 # Save config.
 echo "$desc" > $VA_PATH/utils/guest-setup/$name.conf
 

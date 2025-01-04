@@ -1,5 +1,0 @@
-#!/bin/bash
-
-guest=$1
-
-$VA_DISPATCH switch/input $guest &

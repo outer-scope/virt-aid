@@ -1,5 +1,13 @@
 #!/bin/bash
 
+. $VA_QUERY flag switch-lock
+
+# If switch/next is called during shutdown, we skip since the switching is done by switch/shutdown.
+if [[ ! -z "$is_flagged" ]]
+then
+  exit
+fi
+
 current=$(cat $VA_PATH/utils/switch/current)
 
 . $VA_HELPERS
