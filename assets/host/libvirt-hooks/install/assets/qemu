@@ -55,15 +55,6 @@ prepare-begin() {
   log "Executing vfio-startup..."
   su -c "$VA_DISPATCH spawn libvirt-hooks/vfio-startup"
 
-  sleep 3
-
-  readarray -t pcis < <(echo "$devices_with_virsh_format")
-  for pci in "${pcis[@]}"
-  do
-    log "Detaching $pci"
-    virsh nodedev-detach $pci
-  done
-
   sleep 1
 }
 
